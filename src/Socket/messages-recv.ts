@@ -138,6 +138,8 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 		placeholderResendCache
 	} = sock
 
+	const nodeArrivalTimes = new WeakMap<BinaryNode, number>()
+
 	const getLIDForPN = signalRepository.lidMapping.getLIDForPN.bind(signalRepository.lidMapping)
 
 	/** this mutex ensures that each retryRequest will wait for the previous one to finish */
@@ -1583,6 +1585,9 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 	}
 
 	const handleMessage = async (node: BinaryNode) => {
+		const receivedAt = nodeArrivalTimes.get(node)
+		nodeArrivalTimes.delete(node)
+
 		const encNode = getBinaryNodeChild(node, 'enc')
 		// TODO: temporary fix for crashes and issues resulting of failed msmsg decryption
 		if (encNode?.attrs.type === 'msmsg') {
@@ -1772,7 +1777,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 
 				cleanMessage(msg, authState.creds.me!.id, authState.creds.me!.lid!)
 
-				await upsertMessage(msg, node.attrs.offline ? 'append' : 'notify')
+				await upsertMessage(msg, node.attrs.offline ? 'append' : 'notify', receivedAt)
 			})
 		} catch (error) {
 			logger.error({ error, node: binaryNodeToString(node) }, 'error in handling message')
@@ -1997,6 +2002,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 
 	// recv a message
 	ws.on('CB:message', async (node: BinaryNode) => {
+		nodeArrivalTimes.set(node, Date.now())
 		await processNode('message', node, 'processing message', handleMessage)
 	})
 

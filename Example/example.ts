@@ -21,7 +21,7 @@ const logger = P({
     ],
   },
 })
-logger.level = 'trace'
+logger.level = 'debug'
 
 const doReplies = process.argv.includes('--do-reply')
 const usePairingCode = process.argv.includes('--use-pairing-code')
