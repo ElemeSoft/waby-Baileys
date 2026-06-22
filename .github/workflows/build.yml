@@ -4,7 +4,11 @@ on:
   push:
     branches:
       - master
+      - evolution
   pull_request:
+    branches:
+      - master
+      - evolution
 
 jobs:
   build:
