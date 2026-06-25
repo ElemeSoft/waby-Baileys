@@ -45,8 +45,7 @@ import {
 	newLTHashState,
 	processSyncAction
 } from '../Utils'
-import { aesDecryptGCM, hmacSign } from '../Utils/crypto'
-import { toNumber } from '../Utils/generics'
+import { applyMessageEdit, decryptMessageEdit } from '../Utils/decrypt-message-edit'
 import { makeMutex } from '../Utils/make-mutex'
 import { normalizeMessageContent } from '../Utils/messages'
 import processMessage from '../Utils/process-message'
@@ -1196,196 +1195,175 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		await Promise.all([fetchProps(), fetchBlocklist(), fetchPrivacySettings()])
 	}
 
-	const upsertMessage = ev.createBufferedFunction(
-		async (msg: WAMessage, type: MessageUpsertType, receivedAt?: number) => {
-			const normalizedContent = normalizeMessageContent(msg.message)
+	const upsertMessage = ev.createBufferedFunction(async (msg: WAMessage, type: MessageUpsertType) => {
+		const normalizedContent = normalizeMessageContent(msg.message)
 
-			let isSecretEncryptedEdit =
-				normalizedContent?.secretEncryptedMessage?.secretEncType ===
-				proto.Message.SecretEncryptedMessage.SecretEncType.MESSAGE_EDIT
+		let isSecretEncryptedEdit =
+			normalizedContent?.secretEncryptedMessage?.secretEncType ===
+			proto.Message.SecretEncryptedMessage.SecretEncType.MESSAGE_EDIT
 
-			if (isSecretEncryptedEdit) {
-				try {
-					const secretEnc = normalizedContent!.secretEncryptedMessage
-					const targetMsg = await getMessage(secretEnc!.targetMessageKey!)
-					if (targetMsg?.messageContextInfo?.messageSecret && secretEnc!.encPayload && secretEnc!.encIv) {
-						const rawSecret = targetMsg.messageContextInfo.messageSecret!
-						const origMsgSecret =
-							typeof rawSecret === 'string' ? Buffer.from(rawSecret, 'base64') : Buffer.from(rawSecret)
-						const targetMsgId = secretEnc!.targetMessageKey!.id!
-						const editSender = msg.key.remoteJid || msg.key.participant || ''
+		if (isSecretEncryptedEdit) {
+			try {
+				const secretEnc = normalizedContent!.secretEncryptedMessage!
+				const targetMsg = await getMessage(secretEnc.targetMessageKey!)
+				if (targetMsg?.messageContextInfo?.messageSecret) {
+					const editSender = msg.key.remoteJid || msg.key.participant || ''
+					const result = decryptMessageEdit(
+						secretEnc,
+						targetMsg.messageContextInfo.messageSecret,
+						secretEnc.targetMessageKey!.id!,
+						editSender,
+						logger
+					)
 
-						const sign = Buffer.concat([
-							Buffer.from(targetMsgId),
-							Buffer.from(editSender),
-							Buffer.from(editSender),
-							Buffer.from('Message Edit'),
-							new Uint8Array([1])
-						])
-
-						const key0 = hmacSign(origMsgSecret, new Uint8Array(32), 'sha256')
-						const decKey = hmacSign(sign, key0, 'sha256')
-						const decrypted = aesDecryptGCM(secretEnc!.encPayload, decKey, secretEnc!.encIv, Buffer.alloc(0))
-
-						const decoded = proto.Message.decode(decrypted)
-						const editedContent = decoded.protocolMessage?.editedMessage || decoded
-
-						msg.message = {
-							protocolMessage: {
-								key: secretEnc!.targetMessageKey,
-								editedMessage: editedContent,
-								timestampMs: toNumber(msg.messageTimestamp || 0) * 1000 || Date.now(),
-								type: proto.Message.ProtocolMessage.Type.MESSAGE_EDIT
-							}
-						}
-
+					if (result) {
+						applyMessageEdit(msg, result.protocolMessage, msg.messageTimestamp)
 						isSecretEncryptedEdit = false
 					}
-				} catch (err) {
-					console.log('Failed to decrypt secret encrypted message edit', err)
-					logger?.warn(
-						{ err, targetKey: normalizedContent?.secretEncryptedMessage?.targetMessageKey },
-						'failed to decrypt secret encrypted message edit in upsert'
-					)
 				}
-			}
-
-			if (!isSecretEncryptedEdit) {				
-				ev.emit('messages.upsert', { messages: [msg], type })
-    			ev.flush()  
-			}
-
-			if (!!msg.pushName) {
-				let jid = msg.key.fromMe ? authState.creds.me!.id : msg.key.participant || msg.key.remoteJid
-				jid = jidNormalizedUser(jid!)
-
-				if (!msg.key.fromMe) {
-					ev.emit('contacts.update', [{ id: jid, notify: msg.pushName, verifiedName: msg.verifiedBizName! }])
-				}
-
-				// update our pushname too
-				if (msg.key.fromMe && msg.pushName && authState.creds.me?.name !== msg.pushName) {
-					ev.emit('creds.update', { me: { ...authState.creds.me!, name: msg.pushName } })
-				}
-			}
-
-			const historyMsg = getHistoryMsg(msg.message!)
-			const shouldProcessHistoryMsg = historyMsg
-				? shouldSyncHistoryMessage(historyMsg) &&
-					PROCESSABLE_HISTORY_TYPES.includes(historyMsg.syncType! as proto.HistorySync.HistorySyncType)
-				: false
-
-			if (historyMsg && shouldProcessHistoryMsg) {
-				const syncType = historyMsg.syncType as proto.HistorySync.HistorySyncType
-
-				// INITIAL_BOOTSTRAP — fire immediately, no progress check (same as WA Web K function)
-				if (
-					syncType === proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP &&
-					!historySyncStatus.initialBootstrapComplete
-				) {
-					historySyncStatus.initialBootstrapComplete = true
-					ev.emit('messaging-history.status', {
-						syncType,
-						status: 'complete',
-						explicit: true
-					})
-				}
-
-				// RECENT with progress === 100 — explicit completion
-				if (
-					syncType === proto.HistorySync.HistorySyncType.RECENT &&
-					historyMsg.progress === 100 &&
-					!historySyncStatus.recentSyncComplete
-				) {
-					historySyncStatus.recentSyncComplete = true
-					clearTimeout(historySyncPausedTimeout)
-					historySyncPausedTimeout = undefined
-					ev.emit('messaging-history.status', {
-						syncType,
-						status: 'complete',
-						explicit: true
-					})
-				}
-
-				// Reset 120s paused timeout on any RECENT chunk (like WA Web's handleChunkProgress)
-				if (syncType === proto.HistorySync.HistorySyncType.RECENT && !historySyncStatus.recentSyncComplete) {
-					clearTimeout(historySyncPausedTimeout)
-					historySyncPausedTimeout = setTimeout(() => {
-						if (!historySyncStatus.recentSyncComplete) {
-							historySyncStatus.recentSyncComplete = true
-							ev.emit('messaging-history.status', {
-								syncType: proto.HistorySync.HistorySyncType.RECENT,
-								status: 'paused',
-								explicit: false
-							})
-						}
-
-						historySyncPausedTimeout = undefined
-					}, HISTORY_SYNC_PAUSED_TIMEOUT_MS)
-				}
-			}
-
-			// State machine: decide on sync and flush
-			if (historyMsg && syncState === SyncState.AwaitingInitialSync) {
-				if (awaitingSyncTimeout) {
-					clearTimeout(awaitingSyncTimeout)
-					awaitingSyncTimeout = undefined
-				}
-
-				if (shouldProcessHistoryMsg) {
-					syncState = SyncState.Syncing
-					logger.info('Transitioned to Syncing state')
-					// Let doAppStateSync handle the final flush after it's done
-				} else {
-					syncState = SyncState.Online
-					logger.info('History sync skipped, transitioning to Online state and flushing buffer')
-					ev.flush()
-				}
-			}
-
-			const doAppStateSync = async () => {
-				if (syncState === SyncState.Syncing) {
-					// All collections will be synced, so clear any blocked ones
-					blockedCollections.clear()
-					logger.info('Doing app state sync')
-					await resyncAppState(ALL_WA_PATCH_NAMES, true)
-
-					// Sync is complete, go online and flush everything
-					syncState = SyncState.Online
-					logger.info('App state sync complete, transitioning to Online state and flushing buffer')
-					ev.flush()
-
-					const accountSyncCounter = (authState.creds.accountSyncCounter || 0) + 1
-					ev.emit('creds.update', { accountSyncCounter })
-				}
-			}
-
-			await Promise.all([
-				(async () => {
-					if (shouldProcessHistoryMsg) {
-						await doAppStateSync()
-					}
-				})(),
-				processMessage(msg, {
-					signalRepository,
-					shouldProcessHistoryMsg,
-					placeholderResendCache,
-					ev,
-					creds: authState.creds,
-					keyStore: authState.keys,
-					logger,
-					options: config.options,
-					getMessage
-				})
-			])
-
-			// If the app state key arrives and we are waiting to sync, trigger the sync now.
-			if (msg.message?.protocolMessage?.appStateSyncKeyShare && syncState === SyncState.Syncing) {
-				logger.info('App state sync key arrived, triggering app state sync')
-				await doAppStateSync()
+			} catch (err) {
+				logger?.warn(
+					{ err, targetKey: normalizedContent?.secretEncryptedMessage?.targetMessageKey },
+					'failed to decrypt secret encrypted message edit in upsert'
+				)
 			}
 		}
-	)
+
+		if (!isSecretEncryptedEdit) {
+			ev.emit('messages.upsert', { messages: [msg], type })
+			ev.flush()
+		}
+
+		if (!!msg.pushName) {
+			let jid = msg.key.fromMe ? authState.creds.me!.id : msg.key.participant || msg.key.remoteJid
+			jid = jidNormalizedUser(jid!)
+
+			if (!msg.key.fromMe) {
+				ev.emit('contacts.update', [{ id: jid, notify: msg.pushName, verifiedName: msg.verifiedBizName! }])
+			}
+
+			// update our pushname too
+			if (msg.key.fromMe && msg.pushName && authState.creds.me?.name !== msg.pushName) {
+				ev.emit('creds.update', { me: { ...authState.creds.me!, name: msg.pushName } })
+			}
+		}
+
+		const historyMsg = getHistoryMsg(msg.message!)
+		const shouldProcessHistoryMsg = historyMsg
+			? shouldSyncHistoryMessage(historyMsg) &&
+				PROCESSABLE_HISTORY_TYPES.includes(historyMsg.syncType! as proto.HistorySync.HistorySyncType)
+			: false
+
+		if (historyMsg && shouldProcessHistoryMsg) {
+			const syncType = historyMsg.syncType as proto.HistorySync.HistorySyncType
+
+			// INITIAL_BOOTSTRAP — fire immediately, no progress check (same as WA Web K function)
+			if (
+				syncType === proto.HistorySync.HistorySyncType.INITIAL_BOOTSTRAP &&
+				!historySyncStatus.initialBootstrapComplete
+			) {
+				historySyncStatus.initialBootstrapComplete = true
+				ev.emit('messaging-history.status', {
+					syncType,
+					status: 'complete',
+					explicit: true
+				})
+			}
+
+			// RECENT with progress === 100 — explicit completion
+			if (
+				syncType === proto.HistorySync.HistorySyncType.RECENT &&
+				historyMsg.progress === 100 &&
+				!historySyncStatus.recentSyncComplete
+			) {
+				historySyncStatus.recentSyncComplete = true
+				clearTimeout(historySyncPausedTimeout)
+				historySyncPausedTimeout = undefined
+				ev.emit('messaging-history.status', {
+					syncType,
+					status: 'complete',
+					explicit: true
+				})
+			}
+
+			// Reset 120s paused timeout on any RECENT chunk (like WA Web's handleChunkProgress)
+			if (syncType === proto.HistorySync.HistorySyncType.RECENT && !historySyncStatus.recentSyncComplete) {
+				clearTimeout(historySyncPausedTimeout)
+				historySyncPausedTimeout = setTimeout(() => {
+					if (!historySyncStatus.recentSyncComplete) {
+						historySyncStatus.recentSyncComplete = true
+						ev.emit('messaging-history.status', {
+							syncType: proto.HistorySync.HistorySyncType.RECENT,
+							status: 'paused',
+							explicit: false
+						})
+					}
+
+					historySyncPausedTimeout = undefined
+				}, HISTORY_SYNC_PAUSED_TIMEOUT_MS)
+			}
+		}
+
+		// State machine: decide on sync and flush
+		if (historyMsg && syncState === SyncState.AwaitingInitialSync) {
+			if (awaitingSyncTimeout) {
+				clearTimeout(awaitingSyncTimeout)
+				awaitingSyncTimeout = undefined
+			}
+
+			if (shouldProcessHistoryMsg) {
+				syncState = SyncState.Syncing
+				logger.info('Transitioned to Syncing state')
+				// Let doAppStateSync handle the final flush after it's done
+			} else {
+				syncState = SyncState.Online
+				logger.info('History sync skipped, transitioning to Online state and flushing buffer')
+				ev.flush()
+			}
+		}
+
+		const doAppStateSync = async () => {
+			if (syncState === SyncState.Syncing) {
+				// All collections will be synced, so clear any blocked ones
+				blockedCollections.clear()
+				logger.info('Doing app state sync')
+				await resyncAppState(ALL_WA_PATCH_NAMES, true)
+
+				// Sync is complete, go online and flush everything
+				syncState = SyncState.Online
+				logger.info('App state sync complete, transitioning to Online state and flushing buffer')
+				ev.flush()
+
+				const accountSyncCounter = (authState.creds.accountSyncCounter || 0) + 1
+				ev.emit('creds.update', { accountSyncCounter })
+			}
+		}
+
+		await Promise.all([
+			(async () => {
+				if (shouldProcessHistoryMsg) {
+					await doAppStateSync()
+				}
+			})(),
+			processMessage(msg, {
+				signalRepository,
+				shouldProcessHistoryMsg,
+				placeholderResendCache,
+				ev,
+				creds: authState.creds,
+				keyStore: authState.keys,
+				logger,
+				options: config.options,
+				getMessage
+			})
+		])
+
+		// If the app state key arrives and we are waiting to sync, trigger the sync now.
+		if (msg.message?.protocolMessage?.appStateSyncKeyShare && syncState === SyncState.Syncing) {
+			logger.info('App state sync key arrived, triggering app state sync')
+			await doAppStateSync()
+		}
+	})
 
 	ws.on('CB:presence', handlePresenceUpdate)
 	ws.on('CB:chatstate', handlePresenceUpdate)

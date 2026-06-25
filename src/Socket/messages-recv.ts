@@ -1585,7 +1585,6 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 	}
 
 	const handleMessage = async (node: BinaryNode) => {
-		const receivedAt = nodeArrivalTimes.get(node)
 		nodeArrivalTimes.delete(node)
 
 		const encNode = getBinaryNodeChild(node, 'enc')
@@ -1777,7 +1776,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 
 				cleanMessage(msg, authState.creds.me!.id, authState.creds.me!.lid!)
 
-				await upsertMessage(msg, node.attrs.offline ? 'append' : 'notify', receivedAt)
+				await upsertMessage(msg, node.attrs.offline ? 'append' : 'notify')
 			})
 		} catch (error) {
 			logger.error({ error, node: binaryNodeToString(node) }, 'error in handling message')

@@ -31,6 +31,7 @@ import {
 	jidNormalizedUser
 } from '../WABinary'
 import { aesDecryptGCM, hmacSign } from './crypto'
+import { decryptMessageEdit } from './decrypt-message-edit'
 import { getKeyAuthor, toNumber } from './generics'
 import { downloadAndProcessHistorySyncNotification } from './history'
 import type { ILogger } from './logger'
@@ -319,7 +320,7 @@ const processMessage = async (
 		}
 	}
 
-	const content = normalizeMessageContent(message.message);
+	const content = normalizeMessageContent(message.message)
 
 	// unarchive chat if it's a real message, or someone reacted to our message
 	// and we've the unarchive chats setting on
@@ -626,69 +627,56 @@ const processMessage = async (
 		}
 	} else if (content?.secretEncryptedMessage) {
 		const secretEnc = content.secretEncryptedMessage
-		if (secretEnc.secretEncType === proto.Message.SecretEncryptedMessage.SecretEncType.MESSAGE_EDIT) {
-			try {
-				const targetMsg = await getMessage(secretEnc.targetMessageKey!)
-				if (targetMsg?.messageContextInfo?.messageSecret) {
-					const rawSecret = targetMsg.messageContextInfo.messageSecret!
-					const origMsgSecret = typeof rawSecret === 'string'
-						? Buffer.from(rawSecret, 'base64')
-						: Buffer.from(rawSecret)
-					const targetMsgId = secretEnc.targetMessageKey!.id!
-					const editSender = message.key.remoteJid || message.key.participant || ''
+		if (secretEnc.secretEncType !== proto.Message.SecretEncryptedMessage.SecretEncType.MESSAGE_EDIT) {
+			return
+		}
 
-					const sign = Buffer.concat([
-						Buffer.from(targetMsgId),
-						Buffer.from(editSender),
-						Buffer.from(editSender),
-						Buffer.from('Message Edit'),
-						new Uint8Array([1])
-					])
-
-					const key0 = hmacSign(origMsgSecret, new Uint8Array(32), 'sha256')
-					const decKey = hmacSign(sign, key0, 'sha256')
-					const decrypted = aesDecryptGCM(
-						secretEnc.encPayload!,
-						decKey,
-						secretEnc.encIv!,
-						Buffer.alloc(0)
-					)
-
-					const decoded = proto.Message.decode(decrypted)
-					const editedContent = decoded.protocolMessage?.editedMessage || decoded
-
-					message.message = {
-						protocolMessage: {
-							key: secretEnc.targetMessageKey,
-							editedMessage: editedContent,
-							timestampMs: message.messageTimestamp ? toNumber(message.messageTimestamp) * 1000 : Date.now(),
-							type: proto.Message.ProtocolMessage.Type.MESSAGE_EDIT
-						}
-					}
-
-					ev.emit('messages.update', [
-						{
-							key: { ...message.key, id: secretEnc.targetMessageKey?.id },
-							update: {
-								message: {
-									editedMessage: { message: editedContent }
-								},
-								messageTimestamp: message.messageTimestamp
-							}
-						}
-					])
-				} else {
-					logger?.warn(
-						{ targetKey: secretEnc.targetMessageKey },
-						'original message missing messageSecret for edit decryption'
-					)
-				}
-			} catch (err) {
+		try {
+			const targetMsg = await getMessage(secretEnc.targetMessageKey!)
+			if (!targetMsg?.messageContextInfo?.messageSecret) {
 				logger?.warn(
-					{ err, targetKey: secretEnc.targetMessageKey },
-					'failed to decrypt secret encrypted message edit'
+					{ targetKey: secretEnc.targetMessageKey },
+					'original message missing messageSecret for edit decryption'
 				)
+				return
 			}
+
+			const editSender = message.key.remoteJid || message.key.participant || ''
+			const result = decryptMessageEdit(
+				secretEnc,
+				targetMsg.messageContextInfo.messageSecret,
+				secretEnc.targetMessageKey!.id!,
+				editSender,
+				logger
+			)
+
+			if (!result) {
+				return
+			}
+
+			if (!result.protocolMessage.timestampMs || result.protocolMessage.timestampMs === Date.now()) {
+				result.protocolMessage.timestampMs = message.messageTimestamp
+					? toNumber(message.messageTimestamp) * 1000
+					: Date.now()
+			}
+
+			message.message = {
+				protocolMessage: result.protocolMessage
+			}
+
+			ev.emit('messages.update', [
+				{
+					key: { ...message.key, id: secretEnc.targetMessageKey?.id },
+					update: {
+						message: {
+							editedMessage: { message: result.editedContent }
+						},
+						messageTimestamp: message.messageTimestamp
+					}
+				}
+			])
+		} catch (err) {
+			logger?.warn({ err, targetKey: secretEnc.targetMessageKey }, 'failed to decrypt secret encrypted message edit')
 		}
 	} else if (message.messageStubType) {
 		const jid = message.key?.remoteJid!
