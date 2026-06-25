@@ -3,7 +3,6 @@
   "type": "module",
   "version": "7.0.0-rc13-evolution.1",
   "description": "Fork of Baileys used and maintained for Evolution API",
-  "private": "true",
   "keywords": [
     "whatsapp",
     "automation"

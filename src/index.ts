@@ -12,4 +12,4 @@ export type WASocket = ReturnType<typeof makeWASocket>
 export { makeWASocket }
 export default makeWASocket
 
-console.log('USING ELEMESOFT BAILEYS FORK');
+console.log('USING ELEMESOFT BAILEYS FORK')
