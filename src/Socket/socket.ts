@@ -223,7 +223,7 @@ export const makeSocket = (config: SocketConfig) => {
 
 		const msgId = node.attrs.id
 
-		console.log({
+		logger.info({
 			tag: node.tag,
 			xmlns: node.attrs.xmlns,
 			type: node.attrs.type,
@@ -239,7 +239,7 @@ export const makeSocket = (config: SocketConfig) => {
 				.catch(reject)
 		})
 
-		console.log({
+		logger.info({
 			tag: node.tag,
 			ms: Math.round(performance.now() - start)
 		}, 'QUERY END')
