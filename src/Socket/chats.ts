@@ -759,7 +759,17 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			})
 		}
 
-		jid = jidNormalizedUser(jid)
+		const originalJid = jid;
+		jid = jidNormalizedUser(jid);
+
+		logger.info({
+			jidOriginal: originalJid,
+			jidNormalized: jidNormalizedUser(jid),
+			isPn: isPnUser(jidNormalizedUser(jid)),
+			isLid: isLidUser(jidNormalizedUser(jid)),
+			me: authState.creds.me
+		}, 'profilePicture.start')
+
 		const result = await query(
 			{
 				tag: 'iq',
@@ -772,7 +782,8 @@ export const makeChatsSocket = (config: SocketConfig) => {
 				content
 			},
 			timeoutMs
-		)
+		);
+		logger.info(result, 'profilePicture.response')
 		const child = getBinaryNodeChild(result, 'picture')
 		return child?.attrs?.url
 	}
