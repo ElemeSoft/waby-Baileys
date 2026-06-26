@@ -760,6 +760,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		}
 
 		const originalJid = jid;
+		console.log('PROFILE PICTURE START', jid)
 		jid = jidNormalizedUser(jid);
 
 		logger.info({
