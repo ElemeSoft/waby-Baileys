@@ -176,6 +176,14 @@ export const makeSocket = (config: SocketConfig) => {
 		try {
 			const result = await promiseTimeout<T>(timeoutMs, (resolve, reject) => {
 				onRecv = data => {
+					logger.info(
+						{
+							msgId,
+							tag: (data as any)?.tag,
+							attrs: (data as any)?.attrs
+						},
+						'WAITFORMESSAGE RESOLVED'
+					)
 					resolve(data)
 				}
 
@@ -238,6 +246,16 @@ export const makeSocket = (config: SocketConfig) => {
 				.then(async () => resolve(await result))
 				.catch(reject)
 		})
+
+		logger.info(
+			{
+				msgId,
+				hasResult: !!result,
+				tag: result?.tag,
+				attrs: result?.attrs
+			},
+			'QUERY RAW RESULT'
+		)
 
 		logger.info({ tag: node.tag, ms: Math.round(performance.now() - start) }, 'QUERY END')
 
@@ -611,6 +629,14 @@ export const makeSocket = (config: SocketConfig) => {
 			if (!(frame instanceof Uint8Array)) {
 				const msgId = frame.attrs.id
 
+				logger.info(
+					{
+						tag: frame.tag,
+						attrs: frame.attrs
+					},
+					'RAW IQ RECEIVED'
+				)
+
 				if (logger.level === 'trace') {
 					logger.trace({ xml: binaryNodeToString(frame), msg: 'recv xml' })
 				}
@@ -627,8 +653,29 @@ export const makeSocket = (config: SocketConfig) => {
 					'FRAME RECEIVED'
 				)
 
+				logger.info(
+					{
+						msgId,
+						frameTag: frame.tag,
+						frameType: frame.attrs?.type,
+						frameXmlns: frame.attrs?.xmlns,
+						frameFrom: frame.attrs?.from,
+						frameTo: frame.attrs?.to
+					},
+					'EMITTING TAG EVENT'
+				)
+
 				/* Check if this is a response to a message we sent */
 				const emitted = ws.emit(`${DEF_TAG_PREFIX}${msgId}`, frame)
+
+				logger.info(
+					{
+						msgId,
+						emitted
+					},
+					'TAG EVENT RESULT'
+				)
+
 				logger.info(
 					{
 						recvId: msgId,
