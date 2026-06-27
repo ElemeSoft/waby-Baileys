@@ -761,25 +761,29 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		}
 
 		const originalJid = jid
-		logger.info({ jid }, 'profilePicture.start')
+
 		jid = jidNormalizedUser(jid)
+
+		const normalized = jidNormalizedUser(jid)
+
+		const lid = await getLIDForPN(normalized)
+
+		const target = lid ?? normalized
 
 		logger.info(
 			{
-				jidOriginal: originalJid,
-				jidNormalized: jidNormalizedUser(jid),
-				isPn: isPnUser(jidNormalizedUser(jid)),
-				isLid: isLidUser(jidNormalizedUser(jid)),
-				me: authState.creds.me
+				normalized,
+				lid,
+				target
 			},
-			'profilePicture.start'
+			'profilePicture.target'
 		)
 
 		const result = await query(
 			{
 				tag: 'iq',
 				attrs: {
-					target: jid,
+					target: target,
 					to: S_WHATSAPP_NET,
 					type: 'get',
 					xmlns: 'w:profile:picture'
