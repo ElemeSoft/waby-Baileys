@@ -226,16 +226,7 @@ export const makeSocket = (config: SocketConfig) => {
 
 		const msgId = node.attrs.id
 
-		logger.info(
-			{
-				tag: node.tag,
-				xmlns: node.attrs.xmlns,
-				type: node.attrs.type,
-				to: node.attrs.to,
-				id: msgId
-			},
-			'QUERY START'
-		)
+		logger.info({ tag: node.tag, xmlns: node.attrs.xmlns, type: node.attrs.type, to: node.attrs.to,	id: msgId	},		'QUERY START'	)
 		const start = performance.now()
 
 		const result = await promiseTimeout<any>(timeoutMs, async (resolve, reject) => {
@@ -245,13 +236,7 @@ export const makeSocket = (config: SocketConfig) => {
 				.catch(reject)
 		})
 
-		logger.info(
-			{
-				tag: node.tag,
-				ms: Math.round(performance.now() - start)
-			},
-			'QUERY END'
-		)
+		logger.info({ tag: node.tag, ms: Math.round(performance.now() - start)	},	'QUERY END' )
 
 		if (result && 'tag' in result) {
 			assertNodeErrorFree(result)
