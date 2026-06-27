@@ -2000,7 +2000,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 	}
 
 	// recv a message
-	ws.on('CB:message', async (node: BinaryNode) => {		
+	ws.on('CB:message', async (node: BinaryNode) => {
 		nodeArrivalTimes.set(node, Date.now())
 		await processNode('message', node, 'processing message', handleMessage)
 	})

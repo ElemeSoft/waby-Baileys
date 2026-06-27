@@ -991,11 +991,10 @@ export const decryptMediaRetryData = (
 }
 
 const MEDIA_RETRY_STATUS_MAP: Record<number, number> = {
-    [proto.MediaRetryNotification.ResultType.SUCCESS]: 200,
-    [proto.MediaRetryNotification.ResultType.DECRYPTION_ERROR]: 412,
-    [proto.MediaRetryNotification.ResultType.NOT_FOUND]: 404,
-    [proto.MediaRetryNotification.ResultType.GENERAL_ERROR]: 418,
+	[proto.MediaRetryNotification.ResultType.SUCCESS]: 200,
+	[proto.MediaRetryNotification.ResultType.DECRYPTION_ERROR]: 412,
+	[proto.MediaRetryNotification.ResultType.NOT_FOUND]: 404,
+	[proto.MediaRetryNotification.ResultType.GENERAL_ERROR]: 418
 }
 
 export const getStatusCodeForMediaRetry = (code: number) => MEDIA_RETRY_STATUS_MAP[code]
-

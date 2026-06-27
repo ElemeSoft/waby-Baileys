@@ -760,17 +760,20 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			})
 		}
 
-		const originalJid = jid;
-		console.log('PROFILE PICTURE START', jid)
-		jid = jidNormalizedUser(jid);
+		const originalJid = jid
+		logger.info({ jid }, 'profilePicture.start')
+		jid = jidNormalizedUser(jid)
 
-		logger.info({
-			jidOriginal: originalJid,
-			jidNormalized: jidNormalizedUser(jid),
-			isPn: isPnUser(jidNormalizedUser(jid)),
-			isLid: isLidUser(jidNormalizedUser(jid)),
-			me: authState.creds.me
-		}, 'profilePicture.start')
+		logger.info(
+			{
+				jidOriginal: originalJid,
+				jidNormalized: jidNormalizedUser(jid),
+				isPn: isPnUser(jidNormalizedUser(jid)),
+				isLid: isLidUser(jidNormalizedUser(jid)),
+				me: authState.creds.me
+			},
+			'profilePicture.start'
+		)
 
 		const result = await query(
 			{
@@ -784,7 +787,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 				content
 			},
 			timeoutMs
-		);
+		)
 		logger.info(result, 'profilePicture.response')
 		const child = getBinaryNodeChild(result, 'picture')
 		return child?.attrs?.url
