@@ -615,8 +615,29 @@ export const makeSocket = (config: SocketConfig) => {
 					logger.trace({ xml: binaryNodeToString(frame), msg: 'recv xml' })
 				}
 
+				logger.info(
+					{
+						recvTag: frame.tag,
+						recvId: msgId,
+						xmlns: frame.attrs.xmlns,
+						type: frame.attrs.type,
+						from: frame.attrs.from,
+						to: frame.attrs.to
+					},
+					'FRAME RECEIVED'
+				)
+
 				/* Check if this is a response to a message we sent */
-				anyTriggered = ws.emit(`${DEF_TAG_PREFIX}${msgId}`, frame) || anyTriggered
+				const emitted = ws.emit(`${DEF_TAG_PREFIX}${msgId}`, frame)
+				logger.info(
+					{
+						recvId: msgId,
+						emitted
+					},
+					'TAG EMIT'
+				)
+
+				anyTriggered = emitted || anyTriggered
 				/* Check if this is a response to a message we are expecting */
 				const l0 = frame.tag
 				const l1 = frame.attrs || {}
