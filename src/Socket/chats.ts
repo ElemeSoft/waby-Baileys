@@ -760,7 +760,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			})
 		}
 
-		const originalJid = jid
+		//const originalJid = jid
 
 		jid = jidNormalizedUser(jid)
 
