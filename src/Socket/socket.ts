@@ -201,7 +201,7 @@ export const makeSocket = (config: SocketConfig) => {
 				logger?.warn?.(
 					{
 						msgId,
-						stack: new Error().stack?.split('\n').slice(2, 10)
+						stack: new Error().stack?.split('\n').slice(2, 10).join('\n')
 					},
 					'timed out waiting for message'
 				)
