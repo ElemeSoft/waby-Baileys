@@ -1428,6 +1428,30 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			sendPresenceUpdate(markOnlineOnConnect ? 'available' : 'unavailable').catch(error =>
 				onUnexpectedError(error, 'presence update requests')
 			)
+
+			// ===== TEMPORAL: DIAGNOSTIC TEST =====
+			setTimeout(async () => {
+				const testJid = '5493434170154@s.whatsapp.net'
+
+				logger.info('========== PROFILE PICTURE TEST ==========')
+				logger.info({ jid: testJid }, 'Invoking profilePictureUrl()')
+				const start = performance.now()
+				try {
+					const url = await profilePictureUrl(testJid, 'image')
+					const elapsed = Math.round(performance.now() - start)
+					if (url) {
+						logger.info({ url, elapsed }, 'PROFILE RESULT')
+					} else {
+						logger.warn({ elapsed }, 'PROFILE RESULT: url is undefined/null')
+					}
+				} catch (err: any) {
+					const elapsed = Math.round(performance.now() - start)
+					logger.error({ err: err?.message, stack: err?.stack, elapsed }, 'PROFILE ERROR')
+				}
+
+				logger.info('========== PROFILE PICTURE TEST END ==========')
+			}, 5_000)
+			// ===== END TEMPORAL DIAGNOSTIC TEST =====
 		}
 
 		if (!receivedPendingNotifications || syncState !== SyncState.Connecting) {
