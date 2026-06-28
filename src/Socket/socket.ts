@@ -176,14 +176,6 @@ export const makeSocket = (config: SocketConfig) => {
 		try {
 			const result = await promiseTimeout<T>(timeoutMs, (resolve, reject) => {
 				onRecv = data => {
-					logger.info(
-						{
-							msgId,
-							tag: (data as any)?.tag,
-							attrs: (data as any)?.attrs
-						},
-						'WAITFORMESSAGE RESOLVED'
-					)
 					resolve(data)
 				}
 
@@ -206,13 +198,7 @@ export const makeSocket = (config: SocketConfig) => {
 		} catch (error) {
 			// Catch timeout and return undefined instead of throwing
 			if (error instanceof Boom && error.output?.statusCode === DisconnectReason.timedOut) {
-				logger?.warn?.(
-					{
-						msgId,
-						stack: new Error().stack?.split('\n').slice(2, 10).join('\n')
-					},
-					'timed out waiting for message'
-				)
+				logger?.warn?.({ msgId }, 'timed out waiting for message')
 				return undefined
 			}
 
@@ -234,30 +220,12 @@ export const makeSocket = (config: SocketConfig) => {
 
 		const msgId = node.attrs.id
 
-		logger.info(
-			{ tag: node.tag, xmlns: node.attrs.xmlns, type: node.attrs.type, to: node.attrs.to, id: msgId },
-			'QUERY START'
-		)
-		const start = performance.now()
-
 		const result = await promiseTimeout<any>(timeoutMs, async (resolve, reject) => {
 			const result = waitForMessage(msgId, timeoutMs).catch(reject)
 			sendNode(node)
 				.then(async () => resolve(await result))
 				.catch(reject)
 		})
-
-		logger.info(
-			{
-				msgId,
-				hasResult: !!result,
-				tag: result?.tag,
-				attrs: result?.attrs
-			},
-			'QUERY RAW RESULT'
-		)
-
-		logger.info({ tag: node.tag, ms: Math.round(performance.now() - start) }, 'QUERY END')
 
 		if (result && 'tag' in result) {
 			assertNodeErrorFree(result)
@@ -629,62 +597,12 @@ export const makeSocket = (config: SocketConfig) => {
 			if (!(frame instanceof Uint8Array)) {
 				const msgId = frame.attrs.id
 
-				logger.info(
-					{
-						tag: frame.tag,
-						attrs: frame.attrs
-					},
-					'RAW IQ RECEIVED'
-				)
-
 				if (logger.level === 'trace') {
 					logger.trace({ xml: binaryNodeToString(frame), msg: 'recv xml' })
 				}
 
-				logger.info(
-					{
-						recvTag: frame.tag,
-						recvId: msgId,
-						xmlns: frame.attrs.xmlns,
-						type: frame.attrs.type,
-						from: frame.attrs.from,
-						to: frame.attrs.to
-					},
-					'FRAME RECEIVED'
-				)
-
-				logger.info(
-					{
-						msgId,
-						frameTag: frame.tag,
-						frameType: frame.attrs?.type,
-						frameXmlns: frame.attrs?.xmlns,
-						frameFrom: frame.attrs?.from,
-						frameTo: frame.attrs?.to
-					},
-					'EMITTING TAG EVENT'
-				)
-
 				/* Check if this is a response to a message we sent */
-				const emitted = ws.emit(`${DEF_TAG_PREFIX}${msgId}`, frame)
-
-				logger.info(
-					{
-						msgId,
-						emitted
-					},
-					'TAG EVENT RESULT'
-				)
-
-				logger.info(
-					{
-						recvId: msgId,
-						emitted
-					},
-					'TAG EMIT'
-				)
-
-				anyTriggered = emitted || anyTriggered
+				anyTriggered = ws.emit(`${DEF_TAG_PREFIX}${msgId}`, frame) || anyTriggered
 				/* Check if this is a response to a message we are expecting */
 				const l0 = frame.tag
 				const l1 = frame.attrs || {}
