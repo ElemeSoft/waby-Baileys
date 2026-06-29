@@ -47,6 +47,7 @@ type ProcessMessageContext = {
 	options: RequestInit
 	signalRepository: SignalRepositoryWithLIDStore
 	getMessage: SocketConfig['getMessage']
+	messageSecretCache?: Map<string, Uint8Array>
 }
 
 const REAL_MSG_STUB_TYPES = new Set([
@@ -302,7 +303,8 @@ const processMessage = async (
 		keyStore,
 		logger,
 		options,
-		getMessage
+		getMessage,
+		messageSecretCache
 	}: ProcessMessageContext
 ) => {
 	const meId = creds.me!.id
@@ -321,6 +323,11 @@ const processMessage = async (
 	}
 
 	const content = normalizeMessageContent(message.message)
+
+	// Cache messageSecret so edit decryption can find it even if getMessage returns incomplete data
+	if (message.key.id && content?.messageContextInfo?.messageSecret && messageSecretCache) {
+		messageSecretCache.set(message.key.id, content.messageContextInfo.messageSecret)
+	}
 
 	logger?.info(content, 'processing message')
 	logger?.info({ message }, 'processing message (raw)')
@@ -649,19 +656,22 @@ const processMessage = async (
 				},
 				'result of getMessage for secret encrypted edit in processMessage'
 			)
-			if (!targetMsg?.messageContextInfo?.messageSecret) {
+			// Resolve messageSecret: first from getMessage result, then from cache
+			let messageSecret = targetMsg?.messageContextInfo?.messageSecret
+			if (!messageSecret && targetKey.id && messageSecretCache) {
+				messageSecret = messageSecretCache.get(targetKey.id)
+				if (messageSecret) {
+					logger?.debug({ targetKey }, 'resolved messageSecret from internal cache in processMessage')
+				}
+			}
+
+			if (!messageSecret) {
 				logger?.warn({ targetKey, targetMsg }, 'original message missing messageSecret for edit decryption')
 				return
 			}
 
 			const editSender = message.key.remoteJid || message.key.participant || ''
-			const result = decryptMessageEdit(
-				secretEnc,
-				targetMsg.messageContextInfo.messageSecret,
-				secretEnc.targetMessageKey!.id!,
-				editSender,
-				logger
-			)
+			const result = decryptMessageEdit(secretEnc, messageSecret, secretEnc.targetMessageKey!.id!, editSender, logger)
 
 			if (!result) {
 				return

@@ -139,6 +139,9 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			useClones: false
 		}) as CacheStore)
 
+	/** Cache messageSecret by message ID so edit decryption works even if getMessage returns incomplete data */
+	const messageSecretCache = new Map<string, Uint8Array>()
+
 	/** helper function to fetch the given app state sync key */
 	const getAppStateSyncKey = async (keyId: string) => {
 		const { [keyId]: key } = await authState.keys.get('app-state-sync-key', [keyId])
@@ -1207,6 +1210,11 @@ export const makeChatsSocket = (config: SocketConfig) => {
 	const upsertMessage = ev.createBufferedFunction(async (msg: WAMessage, type: MessageUpsertType) => {
 		const normalizedContent = normalizeMessageContent(msg.message)
 
+		// Cache messageSecret from every message that passes through
+		if (msg.key.id && normalizedContent?.messageContextInfo?.messageSecret) {
+			messageSecretCache.set(msg.key.id, normalizedContent.messageContextInfo.messageSecret)
+		}
+
 		let isSecretEncryptedEdit =
 			normalizedContent?.secretEncryptedMessage?.secretEncType ===
 			proto.Message.SecretEncryptedMessage.SecretEncType.MESSAGE_EDIT
@@ -1231,11 +1239,20 @@ export const makeChatsSocket = (config: SocketConfig) => {
 					},
 					'result of getMessage for secret encrypted edit in upsert'
 				)
-				if (targetMsg?.messageContextInfo?.messageSecret) {
+				// Resolve messageSecret: first from getMessage result, then from cache
+				let messageSecret = targetMsg?.messageContextInfo?.messageSecret
+				if (!messageSecret && targetKey.id) {
+					messageSecret = messageSecretCache.get(targetKey.id)
+					if (messageSecret) {
+						logger?.debug({ targetKey }, 'resolved messageSecret from internal cache in upsert')
+					}
+				}
+
+				if (messageSecret) {
 					const editSender = msg.key.remoteJid || msg.key.participant || ''
 					const result = decryptMessageEdit(
 						secretEnc,
-						targetMsg.messageContextInfo.messageSecret,
+						messageSecret,
 						secretEnc.targetMessageKey!.id!,
 						editSender,
 						logger
@@ -1259,14 +1276,6 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		}
 
 		if (!isSecretEncryptedEdit) {
-			const emitContent = normalizeMessageContent(msg.message)
-			if (emitContent?.messageContextInfo?.messageSecret) {
-				logger?.debug(
-					{ msgId: msg.key.id, remoteJid: msg.key.remoteJid },
-					'emitting messages.upsert with messageSecret available'
-				)
-			}
-
 			ev.emit('messages.upsert', { messages: [msg], type })
 			ev.flush()
 		}
@@ -1391,7 +1400,8 @@ export const makeChatsSocket = (config: SocketConfig) => {
 				keyStore: authState.keys,
 				logger,
 				options: config.options,
-				getMessage
+				getMessage,
+				messageSecretCache
 			})
 		])
 
