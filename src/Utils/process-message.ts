@@ -635,13 +635,22 @@ const processMessage = async (
 		}
 
 		try {
-			const targetMsg = await getMessage(secretEnc.targetMessageKey!)
-			logger?.debug({ targetMsg }, 'targetMsg')
+			const targetKey = secretEnc.targetMessageKey!
+			logger?.debug({ targetKey }, 'attempting secret encrypted message edit decryption in processMessage')
+			const targetMsg = await getMessage(targetKey)
+			logger?.debug(
+				{
+					targetKey,
+					found: !!targetMsg,
+					hasMessageContextInfo: !!targetMsg?.messageContextInfo,
+					hasMessageSecret: !!targetMsg?.messageContextInfo?.messageSecret,
+					conversation: targetMsg?.conversation,
+					keys: targetMsg ? Object.keys(targetMsg) : undefined
+				},
+				'result of getMessage for secret encrypted edit in processMessage'
+			)
 			if (!targetMsg?.messageContextInfo?.messageSecret) {
-				logger?.warn(
-					{ targetKey: secretEnc.targetMessageKey },
-					'original message missing messageSecret for edit decryption'
-				)
+				logger?.warn({ targetKey, targetMsg }, 'original message missing messageSecret for edit decryption')
 				return
 			}
 

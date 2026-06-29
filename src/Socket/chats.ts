@@ -1214,7 +1214,23 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		if (isSecretEncryptedEdit) {
 			try {
 				const secretEnc = normalizedContent!.secretEncryptedMessage!
-				const targetMsg = await getMessage(secretEnc.targetMessageKey!)
+				const targetKey = secretEnc.targetMessageKey!
+				logger?.debug(
+					{ targetKey, editMsgKey: msg.key },
+					'attempting secret encrypted message edit decryption in upsert'
+				)
+				const targetMsg = await getMessage(targetKey)
+				logger?.debug(
+					{
+						targetKey,
+						found: !!targetMsg,
+						hasMessageContextInfo: !!targetMsg?.messageContextInfo,
+						hasMessageSecret: !!targetMsg?.messageContextInfo?.messageSecret,
+						conversation: targetMsg?.conversation,
+						keys: targetMsg ? Object.keys(targetMsg) : undefined
+					},
+					'result of getMessage for secret encrypted edit in upsert'
+				)
 				if (targetMsg?.messageContextInfo?.messageSecret) {
 					const editSender = msg.key.remoteJid || msg.key.participant || ''
 					const result = decryptMessageEdit(
@@ -1228,7 +1244,11 @@ export const makeChatsSocket = (config: SocketConfig) => {
 					if (result) {
 						applyMessageEdit(msg, result.protocolMessage, msg.messageTimestamp)
 						isSecretEncryptedEdit = false
+					} else {
+						logger?.warn({ targetKey }, 'decryptMessageEdit returned null in upsert')
 					}
+				} else {
+					logger?.warn({ targetKey, targetMsg }, 'getMessage returned message without messageSecret in upsert')
 				}
 			} catch (err) {
 				logger?.warn(
@@ -1239,6 +1259,14 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		}
 
 		if (!isSecretEncryptedEdit) {
+			const emitContent = normalizeMessageContent(msg.message)
+			if (emitContent?.messageContextInfo?.messageSecret) {
+				logger?.debug(
+					{ msgId: msg.key.id, remoteJid: msg.key.remoteJid },
+					'emitting messages.upsert with messageSecret available'
+				)
+			}
+
 			ev.emit('messages.upsert', { messages: [msg], type })
 			ev.flush()
 		}
