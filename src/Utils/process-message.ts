@@ -636,6 +636,7 @@ const processMessage = async (
 
 		try {
 			const targetMsg = await getMessage(secretEnc.targetMessageKey!)
+			logger?.debug({ targetMsg }, 'targetMsg')
 			if (!targetMsg?.messageContextInfo?.messageSecret) {
 				logger?.warn(
 					{ targetKey: secretEnc.targetMessageKey },
