@@ -322,6 +322,9 @@ const processMessage = async (
 
 	const content = normalizeMessageContent(message.message)
 
+	logger?.info(content, 'processing message')
+	logger?.info({ message }, 'processing message (raw)')
+
 	// unarchive chat if it's a real message, or someone reacted to our message
 	// and we've the unarchive chats setting on
 	if ((isRealMsg || content?.reactionMessage?.key?.fromMe) && accountSettings?.unarchiveChats) {
