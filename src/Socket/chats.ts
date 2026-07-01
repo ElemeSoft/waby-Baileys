@@ -1210,6 +1210,9 @@ export const makeChatsSocket = (config: SocketConfig) => {
 	const upsertMessage = ev.createBufferedFunction(async (msg: WAMessage, type: MessageUpsertType) => {
 		const normalizedContent = normalizeMessageContent(msg.message)
 
+		logger?.debug({ msg, type }, 'upsertMessage called')
+		logger?.debug({ normalizedContent }, 'normalized message content')
+
 		// Cache messageSecret from every message that passes through
 		if (msg.key.id && normalizedContent?.messageContextInfo?.messageSecret) {
 			messageSecretCache.set(msg.key.id, normalizedContent.messageContextInfo.messageSecret)

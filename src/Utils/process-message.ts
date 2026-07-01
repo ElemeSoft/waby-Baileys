@@ -644,8 +644,11 @@ const processMessage = async (
 		try {
 			const targetKey = secretEnc.targetMessageKey!
 			logger?.debug({ targetKey }, 'attempting secret encrypted message edit decryption in processMessage')
-			const targetMsg = await getMessage(secretEnc.targetMessageKey!);
-			logger?.debug(JSON.stringify(targetMsg, null, 2), 'result of getMessage for secret encrypted edit in processMessage')
+			const targetMsg = await getMessage(secretEnc.targetMessageKey!)
+			logger?.debug(
+				JSON.stringify(targetMsg, null, 2),
+				'result of getMessage for secret encrypted edit in processMessage'
+			)
 			logger?.debug(
 				{
 					targetMsg,
