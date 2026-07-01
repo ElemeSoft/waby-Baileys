@@ -339,7 +339,15 @@ export const decryptMessageNode = (
 						let msg: proto.IMessage = proto.Message.decode(
 							e2eType !== 'plaintext' ? unpadRandomMax16(msgBuffer) : msgBuffer
 						)
+						// Preserve messageContextInfo from the outer deviceSentMessage wrapper.
+						// WhatsApp places messageContextInfo (field 35) on the outer Message for self-sent
+						// messages, but the inner deviceSentMessage.message often lacks it.
+						const outerMsg = msg
 						msg = msg.deviceSentMessage?.message || msg
+						if (outerMsg.deviceSentMessage?.message && outerMsg.messageContextInfo && !msg.messageContextInfo) {
+							msg.messageContextInfo = outerMsg.messageContextInfo
+						}
+
 						if (msg.senderKeyDistributionMessage) {
 							//eslint-disable-next-line max-depth
 							try {
