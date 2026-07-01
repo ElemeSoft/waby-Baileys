@@ -635,8 +635,8 @@ const processMessage = async (
 		} else {
 			logger?.warn({ creationMsgKey }, 'event creation message not found, cannot decrypt response')
 		}
-	} else if (content?.secretEncryptedMessage) {
-		const secretEnc = content.secretEncryptedMessage
+	} else if (message.message?.secretEncryptedMessage) {
+		const secretEnc = message.message.secretEncryptedMessage
 		if (secretEnc.secretEncType !== proto.Message.SecretEncryptedMessage.SecretEncType.MESSAGE_EDIT) {
 			return
 		}
@@ -644,7 +644,7 @@ const processMessage = async (
 		try {
 			const targetKey = secretEnc.targetMessageKey!
 			logger?.debug({ targetKey }, 'attempting secret encrypted message edit decryption in processMessage')
-			const targetMsg = await getMessage(targetKey)
+			const targetMsg = await getMessage(secretEnc.targetMessageKey!)
 			logger?.debug(
 				{
 					targetKey,
