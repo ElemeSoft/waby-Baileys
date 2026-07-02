@@ -329,8 +329,8 @@ const processMessage = async (
 		messageSecretCache.set(message.key.id, content.messageContextInfo.messageSecret)
 	}
 
-	logger?.info(content, 'processing message')
-	logger?.info({ message }, 'processing message (raw)')
+	logger?.debug(content, 'processing message')
+	logger?.debug({ message }, 'processing message (raw)')
 
 	// unarchive chat if it's a real message, or someone reacted to our message
 	// and we've the unarchive chats setting on
