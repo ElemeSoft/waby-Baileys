@@ -1,5 +1,6 @@
 import NodeCache from '@cacheable/node-cache'
 import { Boom } from '@hapi/boom'
+import { LRUCache } from 'lru-cache'
 import { proto } from '../../WAProto/index.js'
 import { DEFAULT_CACHE_TTLS, HISTORY_SYNC_PAUSED_TIMEOUT_MS, PROCESSABLE_HISTORY_TYPES } from '../Defaults'
 import type {
@@ -140,7 +141,11 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		}) as CacheStore)
 
 	/** Cache messageSecret by message ID so edit decryption works even if getMessage returns incomplete data */
-	const messageSecretCache = new Map<string, Uint8Array>()
+	const messageSecretCache = new LRUCache<string, Uint8Array>({
+		max: 10000,
+		ttl: 1000 * 60 * 60, // 1 hour
+		ttlAutopurge: true
+	})
 
 	/** helper function to fetch the given app state sync key */
 	const getAppStateSyncKey = async (keyId: string) => {

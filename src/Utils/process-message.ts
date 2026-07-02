@@ -47,7 +47,7 @@ type ProcessMessageContext = {
 	options: RequestInit
 	signalRepository: SignalRepositoryWithLIDStore
 	getMessage: SocketConfig['getMessage']
-	messageSecretCache?: Map<string, Uint8Array>
+	messageSecretCache?: { get(key: string): Uint8Array | undefined; set(key: string, value: Uint8Array): any }
 }
 
 const REAL_MSG_STUB_TYPES = new Set([

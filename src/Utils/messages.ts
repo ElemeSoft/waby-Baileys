@@ -40,7 +40,6 @@ import {
 	getRawMediaUploadData,
 	type MediaDownloadOptions
 } from './messages-media'
-import { shouldIncludeReportingToken } from './reporting-utils'
 
 type ExtractByKey<T, K extends PropertyKey> = T extends Record<K, any> ? T : never
 type RequireKey<T, K extends keyof T> = T & {
@@ -669,11 +668,9 @@ export const generateWAMessageContent = async (
 		}
 	}
 
-	if (shouldIncludeReportingToken(m)) {
-		m.messageContextInfo = m.messageContextInfo || {}
-		if (!m.messageContextInfo.messageSecret) {
-			m.messageContextInfo.messageSecret = randomBytes(32)
-		}
+	m.messageContextInfo = m.messageContextInfo || {}
+	if (!m.messageContextInfo.messageSecret) {
+		m.messageContextInfo.messageSecret = randomBytes(32)
 	}
 
 	return WAProto.Message.create(m)
