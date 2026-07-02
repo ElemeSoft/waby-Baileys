@@ -24,3 +24,4 @@ test.ts
 TestData
 wa-logs*
 coverage
+.mimocode/*
